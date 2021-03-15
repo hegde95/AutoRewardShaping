@@ -9,7 +9,7 @@ from utils.utility import create_trajs, is_invertible
 def run():
     L = 16
     M = 4
-    N = 10000
+    N = 100000
     traj_len = 30
 
     base_dir = "data/saved_trajectories8_noise" + str(N)
