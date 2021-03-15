@@ -3,6 +3,7 @@ from tqdm import tqdm
 import gym
 
 from environments.ConstraintEnv import ConstraintFrozenLake
+from environments.MyFrozenLakeEnv import MyFrozenLake
 
 def is_invertible(a):
     return a.shape[0] == a.shape[1] and np.linalg.matrix_rank(a) == a.shape[0]
@@ -10,21 +11,25 @@ def is_invertible(a):
 def create_trajs(N, L, M, maxlen, Noise = True):
     fin = {}
     R = []
+    alphas = []
     
     # State-Action visitation frequency
     K = np.zeros((N, L*M))
 
     # Next - State visitation frequency
-    H = np.zeros((N, L*M*L))
+    H = np.zeros((N, L*M))
 
     # create environment
-    env = gym.make('FrozenLake-v0', is_slippery=False, map_name="4x4")
-    env = ConstraintFrozenLake(env)
+    # env = gym.make('FrozenLake-v0', is_slippery=False, map_name="4x4")
+    # env = ConstraintFrozenLake(env)
+    env = MyFrozenLake()
 
     # Nested function def to run a given trajectory and update the occupancy matrices
-    def run_traj(traj, l, maxlen):
+    def run_traj(traj, l, maxlen, alpha = 1):
         # reset everything
         st = env.reset()
+        
+        env.set_alpha(alpha)
         done = False
         k = 0
         score = 0
@@ -37,21 +42,26 @@ def create_trajs(N, L, M, maxlen, Noise = True):
             
             next_st, reward, done, _ = env.step(action)
 
-            # # If next state is in the constriant state, icrease occupancy measure of H for the original state action pair
-            # if next_st in env.constraint_states:
-            #     H[l,ij_index] += 1
-            
             # Increment occupation measure as we need the state action pair before the action is taken to predict reward
             K[l,ij_index] += 1
 
+
+
+            # H matrix section
+            ############################################################################################################################################
+            # # If next state is in the constriant state, icrease occupancy measure of H for the original state action pair
+            if next_st in env.constraint_states:
+                H[l,ij_index] += 1
+            
             # # Here we shall try to increase the occupancy measure of the next state only
             # if next_st in env.constraint_states:
             #     H[l,next_st] += 1
 
             # Here try making the cost a function of state, action and next state
-            if next_st in env.constraint_states:
-                iji_dash_index = st * M + int(action) * L + int(next_st)
-                H[l,next_st] += 1
+            # if next_st in env.constraint_states:
+            #     iji_dash_index = st * M + int(action) * L + int(next_st)
+            #     H[l,next_st] += 1
+            ############################################################################################################################################
 
             st = next_st
             score += reward
@@ -63,7 +73,9 @@ def create_trajs(N, L, M, maxlen, Noise = True):
         traj = list(np.random.choice([0,1,2,3], maxlen, p = [0.1,0.4,0.4,0.1]))
 
         # Step2 - Run the trajectory through the environment and update the Occupency matrices
-        score = run_traj(traj, j, maxlen)
+        alpha = np.random.rand()
+        alphas.append(alpha)
+        score = run_traj(traj, j, maxlen, alpha)
         R.append(score)
 
         # This is just to create a map of list of trajectories by their scores
@@ -77,4 +89,4 @@ def create_trajs(N, L, M, maxlen, Noise = True):
     if Noise:
         R = np.random.normal(R,2)
 
-    return fin, R, K, H
+    return fin, R, K, H, np.array(alphas)

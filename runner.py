@@ -9,16 +9,17 @@ from utils.utility import create_trajs, is_invertible
 def run():
     L = 16
     M = 4
-    N = 100000
+    N = 10000
     traj_len = 30
 
     base_dir = "data/saved_trajectories8_noise" + str(N)
     
-    os.makedirs(base_dir,exist_ok=True)
-    save_loc = base_dir + "/" + str(traj_len)
-    os.makedirs(save_loc,exist_ok=True)
-    trajs, R, K, H = create_trajs(N, L, M, traj_len)
-    KH = np.concatenate((K,H),axis=1) 
+    # os.makedirs(base_dir,exist_ok=True)
+    # save_loc = base_dir + "/" + str(traj_len)
+    # os.makedirs(save_loc,exist_ok=True)
+    trajs, R, K, H, alphas = create_trajs(N, L, M, traj_len)
+    H_alpha = np.multiply(np.tile(alphas, (64,1)).transpose(), H)
+    KH = np.concatenate((K,-H_alpha),axis=1) 
     sym_mat = np.dot(KH.transpose(), KH)
     print("Calculated KtK")
     if is_invertible(sym_mat):
