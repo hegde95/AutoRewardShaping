@@ -11,6 +11,7 @@ def is_invertible(a):
 def create_trajs(N, L, M, maxlen, Noise = True):
     fin = {}
     R = []
+    C = []
     alphas = []
     
     # State-Action visitation frequency
@@ -22,7 +23,7 @@ def create_trajs(N, L, M, maxlen, Noise = True):
     # create environment
     # env = gym.make('FrozenLake-v0', is_slippery=False, map_name="4x4")
     # env = ConstraintFrozenLake(env)
-    env = MyFrozenLake()
+    env = MyFrozenLake(probabilistic=False)
 
     # Nested function def to run a given trajectory and update the occupancy matrices
     def run_traj(traj, l, maxlen, alpha = 1):
@@ -33,6 +34,7 @@ def create_trajs(N, L, M, maxlen, Noise = True):
         done = False
         k = 0
         score = 0
+        total_cost = 0
 
         # run through the pre determined trajectory
         while k < len(traj):
@@ -52,6 +54,7 @@ def create_trajs(N, L, M, maxlen, Noise = True):
             # # If next state is in the constriant state, icrease occupancy measure of H for the original state action pair
             if next_st in env.constraint_states:
                 H[l,ij_index] += 1
+                total_cost += reward
             
             # # Here we shall try to increase the occupancy measure of the next state only
             # if next_st in env.constraint_states:
@@ -62,10 +65,11 @@ def create_trajs(N, L, M, maxlen, Noise = True):
             #     iji_dash_index = st * M + int(action) * L + int(next_st)
             #     H[l,next_st] += 1
             ############################################################################################################################################
+            else:
+                score += reward
 
             st = next_st
-            score += reward
-        return score
+        return score, total_cost
 
 
     for j in tqdm(range(N)):
@@ -73,10 +77,12 @@ def create_trajs(N, L, M, maxlen, Noise = True):
         traj = list(np.random.choice([0,1,2,3], maxlen, p = [0.1,0.4,0.4,0.1]))
 
         # Step2 - Run the trajectory through the environment and update the Occupency matrices
-        alpha = np.random.rand()
+        # alpha = np.random.rand()
+        alpha = 1
         alphas.append(alpha)
-        score = run_traj(traj, j, maxlen, alpha)
+        score, total_cost = run_traj(traj, j, maxlen, alpha)
         R.append(score)
+        C.append(total_cost)
 
         # This is just to create a map of list of trajectories by their scores
         if score in fin.keys():
@@ -85,8 +91,10 @@ def create_trajs(N, L, M, maxlen, Noise = True):
             fin[score] = [traj]
 
     R = np.array(R)
+    C = np.array(C)
     # Add gaussian noise to the score
     if Noise:
-        R = np.random.normal(R,2)
+        R = abs(np.random.normal(R,1))
+        C = -abs(-np.random.normal(C,0.5))
 
-    return fin, R, K, H, np.array(alphas)
+    return fin, R, C, K, H, np.array(alphas)
