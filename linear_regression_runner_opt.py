@@ -12,12 +12,13 @@ import matplotlib.pyplot as plt
 import os
 import imageio
 from datetime import datetime
+import pyswarms as ps
 
 L = 64
 M = 4
 alpha = 0.456
 # N = 30
-traj_len = 300
+traj_len = 200
 dim = int(np.sqrt(L))
 
 
@@ -32,9 +33,10 @@ if save:
 
 
 class STL():
-    def __init__(self):
-        self.h1_mid_state = L//2
-        self.h2_mid_state = L//2        
+    def __init__(self, num_holes):
+        self.num_holes = num_holes
+
+        self.holes = [0 for _ in range(self.num_holes)]      
 
     def get_dist(self, state1, state2):
         x1 = state2 % dim
@@ -48,15 +50,14 @@ class STL():
     def get_min_hole_dist(self, state):
 
         # mid for hole 1
-        min_dist3 = 9999
-        dist_to_hole = self.get_dist(self.h1_mid_state, state)
-        min_dist3 = min(min_dist3, dist_to_hole)
+        min_dist = 9999
 
-        # mid for hole 2
-        dist_to_hole = self.get_dist(self.h2_mid_state, state)
-        min_dist3 = min(min_dist3, dist_to_hole)
+        for hole_est in self.holes:
+                
+            dist_to_hole = self.get_dist(hole_est, state)
+            min_dist = min(min_dist, dist_to_hole)
 
-        return min_dist3
+        return min_dist
 
     def calc_costs(self,traj):
         min_dist_to_hole_mid = 9999
@@ -70,6 +71,7 @@ class STL():
 losses = []
 Ns = []
 for N in range(14, 184):
+# for N in range(14, 54):
     if N % 5 == 0:
         print(N)
 
@@ -134,70 +136,49 @@ for N in range(14, 184):
         # Section to calc stl specifications
         #####################################################################################################################
 
+        h_dim = 2
 
-        stl = STL()
-        h1_upper = L
-        h1_lower = 0
-        h2_upper = L
-        h2_lower = 0
-        for j in range(10):
-            
-            # Get loss if h1 is upper limit, h2 is upper limit, 
-            stl.h1_mid_state = h1_upper
-            stl.h2_mid_state = h2_upper
-            loss1 = 0
-            for i, traj in enumerate(trajs):
-                cost_actual = C[i]
-                cost_mid_est = stl.calc_costs(traj)
-                loss1 += (cost_mid_est-cost_actual)**2
+        stl = STL(h_dim)
+        def get_diff(X):
+            n_particles = X.shape[0]
+            n_holes = X.shape[1]
 
-            # Get loss if h1 is upper limit, h2 is lower limit, 
-            stl.h1_mid_state = h1_upper
-            stl.h2_mid_state = h2_lower
-            loss2 = 0
-            for i, traj in enumerate(trajs):
-                cost_actual = C[i]
-                cost_mid_est = stl.calc_costs(traj)
-                loss2 += (cost_mid_est-cost_actual)**2
+            dist = []
+            for part in range(n_particles):
+                for hole_n in range(n_holes):
+                    stl.holes[hole_n] = X[part,hole_n]
+                loss_part = 0
+                for i, traj in enumerate(trajs):
+                    cost_actual = C[i]
+                    cost_mid_est = stl.calc_costs(traj)
+                    loss_part += (cost_mid_est-cost_actual)**2
+                dist.append(loss_part)
+            return np.array(dist)
 
-            # Get loss if h1 is lower limit, h2 is upper limit, 
-            stl.h1_mid_state = h1_lower
-            stl.h2_mid_state = h2_upper
-            loss3 = 0
-            for i, traj in enumerate(trajs):
-                cost_actual = C[i]
-                cost_mid_est = stl.calc_costs(traj)
-                loss3 += (cost_mid_est-cost_actual)**2
+        # get_diff(np.array([[11,21,61,22,14,12,15,62,2,11,12,32,41,12,47,46],
+        #                     [61,2,14,12,15,62,2,11,12,14,12,15,62,2,11,12],
+        #                     [45,13,61,22,14,12,15,62,61,22,14,12,15,62,61,2]]))
 
-            # Get loss if h1 is lower limit, h2 is lower limit, 
-            stl.h1_mid_state = h1_lower
-            stl.h2_mid_state = h2_lower
-            loss4 = 0
-            for i, traj in enumerate(trajs):
-                cost_actual = C[i]
-                cost_mid_est = stl.calc_costs(traj)
-                loss4 += (cost_mid_est-cost_actual)**2
+        # get_diff(np.array([[11,21],
+        #                     [61,2],
+        #                     [45,13]]))
+
+        swarm_size = 20
+        constraints = (np.array([0, 0]),
+               np.array([63, 63]))
+
+        options = {'c1': 1.5, 'c2':1.5, 'w':0.5}
 
 
-            if min([loss1, loss2, loss3, loss4]) == loss1:
-                h1_lower = (h1_lower + h1_upper)//2
-                h2_lower = (h2_lower + h2_upper)//2
-                
-            elif min([loss1, loss2, loss3, loss4]) == loss2:
-                h1_lower = (h1_lower + h1_upper)//2
-                h2_upper = (h2_lower + h2_upper)//2
-
-            elif min([loss1, loss2, loss3, loss4]) == loss3:
-                h1_upper = (h1_lower + h1_upper)//2
-                h2_lower = (h2_lower + h2_upper)//2
-
-            elif min([loss1, loss2, loss3, loss4]) == loss4:
-                h1_upper = (h1_lower + h1_upper)//2
-                h2_upper = (h2_lower + h2_upper)//2
-            # print(min([loss1, loss2, loss3, loss4]))
-
-
-        print("Holes are in:{} and {}".format((h1_upper + h1_lower)//2, (h2_upper + h2_lower)//2))
+        optimizer = ps.single.GlobalBestPSO(n_particles=swarm_size,
+                                            dimensions=h_dim,
+                                            options=options,
+                                            bounds=constraints)
+        
+        cost, hole_states = optimizer.optimize(get_diff, iters=25)
+        
+        
+        print("Holes are in:{} and {}".format(int(hole_states[0]), int(hole_states[1])))
 
         #####################################################################################################################
 
@@ -219,6 +200,8 @@ for N in range(14, 184):
         if save:
             mat1 = np.zeros((dim,dim))
             mat2 = np.zeros((dim,dim))
+            mat3 = np.zeros((dim,dim))
+            mat4 = np.zeros((dim,dim))
             for state in env.state_rewards:
                 
                 true_reward = env.state_rewards[state]
@@ -228,6 +211,12 @@ for N in range(14, 184):
 
                 mat1[state//dim, state%dim] = true_reward
                 mat2[state//dim, state%dim] = predicted_reward
+
+                if state in [int(hole_states[0]), int(hole_states[1])]:
+                    mat3[state//dim, state%dim] = 1
+
+                if state in env.constraint_states:
+                    mat4[state//dim, state%dim] = 1
 
             fig2, (ax3, ax4, ax5) = plt.subplots(nrows=1, ncols=3, figsize=(15, 10))
 
@@ -256,14 +245,26 @@ for N in range(14, 184):
             else:
                 fig2.savefig(base_dir + '/'+ log +'/reward_matrix_'+str(N)+'_not_absorbing.png')
 
+            fig4, (ax7, ax8) = plt.subplots( nrows=1, ncols=2 )  # create figure & 1 axis
+            ax7.title.set_text('hole est')
+            ax7.imshow(mat3, label='hole est', vmin = 0, vmax = 0.6)
+
+            ax8.title.set_text('hole real')
+            ax8.imshow(mat4, label='hole real', vmin = 0, vmax = 0.6)
+            fig4.suptitle("N = " + str(N))
+            fig4.savefig(base_dir + '/'+ log +'/hole_matrix_'+str(N)+'.png')
+
+
 
 if save:
     sorted_file_names = {}
     filenames = os.listdir(base_dir + "/"+log)
 
     for filename in filenames:
-        N = int(filename.split("_")[2])
-        sorted_file_names[N] = filename
+        if filename.split("_")[0] == "reward":
+            N = int(filename.split("_")[2])
+        
+            sorted_file_names[N] = filename
 
     sorted_file_names = sorted_file_names.items()
 
@@ -279,5 +280,22 @@ if save:
     ax6.set(xlabel='Number of trajectories', ylabel='Error')
     
     fig3.savefig(base_dir + '/'+ log +'/loss_curve.png')
+
+    sorted_file_names = {}
+    filenames = os.listdir(base_dir + "/"+log)
+
+    for filename in filenames:
+        if filename.split("_")[0] == "hole":
+            N = int(filename.split("_")[2][:-4])
+            sorted_file_names[N] = filename
+
+    sorted_file_names = sorted_file_names.items()
+
+    sorted_file_names = sorted(sorted_file_names)
+
+    images = []
+    for N, filename in sorted_file_names:
+        images.append(imageio.imread(base_dir + "/"+log+"/"+filename))
+    imageio.mimsave(base_dir + '/'+ log +'/holes.gif', images)
 
 print("Done")
